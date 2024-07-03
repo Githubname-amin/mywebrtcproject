@@ -1,11 +1,15 @@
 import "./App.css";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout, Menu, MenuProps } from "antd";
 import { HomeOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import Index from "./components/index";
+import NotFound from "./components/NotFound";
+import TakePhoto from "./components/webrtc/takePhoto";
+import Transcribe from "./components/webrtc/transcribe";
 
 type MenuItem = Required<MenuProps>["items"][number];
-type MenuCurrent = "index" | "webrtc";
+type MenuCurrent = "index" | "webrtc" | "takePhoto" | "transcribe";
 const items1: MenuItem[] = [
   {
     label: "主页",
@@ -39,14 +43,25 @@ const contentStyle: React.CSSProperties = {
 function App() {
   const [current, setCurrent] = useState<MenuCurrent>("index");
   const { Header, Content } = Layout;
+  const navigate = useNavigate();
 
   const handleMenuClick = (e: any) => {
+    console.log("当前路由", e);
+    switch (e.key) {
+      case "index":
+        navigate("/");
+        break;
+      case "takePhoto":
+        navigate("/takePhoto");
+        break;
+      case "transcribe":
+        navigate("/transcribe");
+        break;
+      default:
+        break;
+    }
     setCurrent(e.key);
   };
-  useEffect(() => {
-    console.log("?", current);
-    return () => {};
-  }, [current]);
 
   return (
     <div className="mainBox">
@@ -58,13 +73,22 @@ function App() {
             mode="horizontal"
             selectedKeys={[current]}
             onClick={handleMenuClick}
-            defaultSelectedKeys={["2"]}
+            defaultSelectedKeys={["index"]}
             items={items1}
             style={{ flex: 1, minWidth: 0 }}
-          />
+          ></Menu>
         </Header>
         <Content style={contentStyle}>
-          <div className="content">{current === "index" && <Index />}</div>
+          <div className="content">
+            <Routes>
+              {/* @ts-ignore */}
+              <Route exact path="/" element={<Index />}></Route>
+              <Route path="/takePhoto" element={<TakePhoto />}></Route>
+              <Route path="/transcribe" element={<Transcribe />}></Route>
+              {/* 兜底路由，匹配不到任何路由时显示 NotFound 组件 */}
+              <Route path="*" element={<NotFound />}></Route>
+            </Routes>
+          </div>
         </Content>
       </Layout>
     </div>
