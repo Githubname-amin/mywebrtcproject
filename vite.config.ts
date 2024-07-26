@@ -9,4 +9,7 @@ export default defineConfig({
       "@": "/src",
     },
   },
+  // server: {
+  //   host: "192.168.2.8",
+  // },
 });

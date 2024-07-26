@@ -3,7 +3,6 @@ import { Button, Image, Radio, RadioChangeEvent, Select } from "antd";
 import "./index.less";
 const takePhoto = () => {
   // 可设置默认视频流
-  const [constraints, setConstraints] = useState<any>();
   const [imgSrc, setImgSrc] = useState<string>();
   const [imgAction, setImgAction] = useState<number>(1);
   const [originalImgSrc, setOriginalImgSrc] = useState<string>();
@@ -19,9 +18,7 @@ const takePhoto = () => {
   };
 
   // 获取本地视频流
-  const getLocalStream = async (
-    options: MediaStreamConstraints = constraints
-  ) => {
+  const getLocalStream = async (options: MediaStreamConstraints) => {
     console.log("当前", options);
     const stream = await window.navigator.mediaDevices.getUserMedia(options);
     console.log("当前设备列表", stream);
@@ -247,7 +244,13 @@ const takePhoto = () => {
   };
   return (
     <>
-      <span className="readme">拍照、图片处理、and 其他有意思操作</span>
+      <span className="readme">
+        拍照、图片处理、and 其他有意思操作。如果不能看到摄像头授权，请先参照
+        <a href="https://blog.csdn.net/weixin_45408862/article/details/107865462">
+          这里
+        </a>
+        进行配置操作
+      </span>
       <div className="totalBox">
         {/* 左边拍摄按钮 and 实时展示视频流 */}
         <div className="leftBox">
@@ -276,7 +279,7 @@ const takePhoto = () => {
               />
             </div>
             <div className="changeDevice">
-              <span>切换方向</span>
+              {/* <span>切换方向</span> */}
             </div>
           </div>
           <Button type="primary" size="large" onClick={handleTakePhoto}>

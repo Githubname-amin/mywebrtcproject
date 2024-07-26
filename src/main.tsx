@@ -1,6 +1,9 @@
+// @ts-ignore
 import React from "react";
+// @ts-ignore
 import ReactDOM from "react-dom/client";
-import App from "./App.tsx";
+// 配置了allowImportingTsExtensions，因此需要省略.tsx后缀，否则报错
+import App from "./App";
 import "./index.css";
 import { BrowserRouter } from "react-router-dom";
 
