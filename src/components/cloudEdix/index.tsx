@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, Radio, message, Input, Button, Collapse, Card } from "antd";
+import { Form, Radio, message, Input, Button } from "antd";
 import "./index.less";
 import { checkCode, reloadAIBot } from "../../server";
 import { LogViewer } from "@patternfly/react-log-viewer";
@@ -37,7 +37,6 @@ const cloudEdix = () => {
     { label: "列表输入", value: false },
     { label: "富文本", value: true },
   ];
-  const { Panel } = Collapse;
 
   const handleChange = () => {
     setUseFullText(!useFulltext);
