@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Form, Radio, Input, Button } from "antd";
+import { Form, Radio, message, Input, Button, Collapse, Card } from "antd";
 import "./index.less";
 import { checkCode, reloadAIBot } from "../../server";
+import { LogViewer } from "@patternfly/react-log-viewer";
 
 type TModelTyoe =
   | "gpt-4"
@@ -28,11 +29,16 @@ const cloudEdix = () => {
   const [useFulltext, setUseFullText] = useState<boolean>(false);
   const [actionCode, setActionCode] = useState<number>(0);
   const [pageFlag, setPageFlag] = useState<boolean>(false);
+  const [logPre, setLogpre] = useState<string | null>();
+
+  const [messageApi, contextHolder] = message.useMessage();
 
   const options = [
     { label: "列表输入", value: false },
     { label: "富文本", value: true },
   ];
+  const { Panel } = Collapse;
+
   const handleChange = () => {
     setUseFullText(!useFulltext);
   };
@@ -77,9 +83,19 @@ const cloudEdix = () => {
   const reloadServer = async () => {
     const result = await reloadAIBot();
     console.log("打印", result);
+    if (result.status === "success") {
+      setLogpre(result.data);
+    } else {
+      messageApi.open({
+        type: "error",
+        content: "This is an error message",
+      });
+      return;
+    }
   };
   return (
     <div>
+      {contextHolder}
       <div className="indexForm">
         {!pageFlag ? (
           <>
@@ -140,6 +156,22 @@ const cloudEdix = () => {
             </Form>
 
             <Button onClick={reloadServer}>重新部署机器人</Button>
+            <div className="log">
+              {/* <Card title="日志查看器"> */}
+              {/* <Collapse>
+                    <Panel header="日志内容" key="1">
+                    
+                    </Panel>
+                  </Collapse> */}
+              {/* <pre>{logPre}</pre> */}
+              {/* </Card> */}
+              <LogViewer
+                hasLineNumbers={true}
+                height={600}
+                data={logPre}
+                theme="light"
+              />
+            </div>
           </div>
         )}
       </div>

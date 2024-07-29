@@ -3,12 +3,16 @@
   height: 100vh;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  /* overflow: hidden; */
   display: flex;
   /* align-items: center; */
   justify-content: center;
 }
 
-.content {
-  height: 100%;
+/* .content { */
+
+/* } */
+
+.pf-v5-c-log-viewer__list-item {
+  margin-bottom: -5px !important;
 }
