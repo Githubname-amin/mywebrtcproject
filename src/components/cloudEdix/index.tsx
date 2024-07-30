@@ -6,7 +6,6 @@ import {
   Input,
   Button,
   Switch,
-  InputNumber,
   Select,
 } from "antd";
 import "./index.less";
