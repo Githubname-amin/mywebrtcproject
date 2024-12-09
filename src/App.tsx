@@ -5,6 +5,7 @@ import {
   HomeOutlined,
   PlayCircleOutlined,
   CloudServerOutlined,
+  PythonOutlined,
 } from "@ant-design/icons";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import Index from "./components/index";
@@ -12,6 +13,9 @@ import NotFound from "./components/NotFound";
 import TakePhoto from "./components/webrtc/takePhoto";
 import Transcribe from "./components/webrtc/transcribe";
 import CloudEdix from "./components/cloudEdix";
+import AIAndMore from "./components/AI/AIAndMore";
+import AIAndVideo from "./components/AI/AIAndVideo";
+import ComfyUI from "./components/AI/ComfyUI";
 
 type MenuItem = Required<MenuProps>["items"][number];
 type MenuCurrent = "index" | "webrtc" | "takePhoto" | "transcribe";
@@ -34,6 +38,16 @@ const items1: MenuItem[] = [
     label: "配置",
     key: "cloudEdix",
     icon: <CloudServerOutlined />,
+  },
+  {
+    label: "AI相关",
+    key: "AI",
+    icon: <PythonOutlined />,
+    children: [
+      { label: "AI一些基础尝试", key: "AIAndMore" },
+      { label: "ComfyUI", key: "ComfyUI" },
+      { label: "模型识别音视频", key: "AIAndVideo" },
+    ],
   },
 ];
 const headerStyle: React.CSSProperties = {
@@ -69,6 +83,15 @@ function App() {
       case "cloudEdix":
         navigate("/cloudEdix");
         break;
+      case "AIAndMore":
+        navigate("/AIAndMore");
+        break;
+      case "ComfyUI":
+        navigate("/ComfyUI");
+        break;
+      case "AIAndVideo":
+        navigate("/AIAndVideo");
+        break;
       default:
         break;
     }
@@ -98,6 +121,9 @@ function App() {
               <Route path="/takePhoto" element={<TakePhoto />}></Route>
               <Route path="/transcribe" element={<Transcribe />}></Route>
               <Route path="/cloudEdix" element={<CloudEdix />}></Route>
+              <Route path="/AIAndMore" element={<AIAndMore />}></Route>
+              <Route path="/ComfyUI" element={<ComfyUI />}></Route>
+              <Route path="/AIAndVideo" element={<AIAndVideo />}></Route>
               {/* 兜底路由，匹配不到任何路由时显示 NotFound 组件 */}
               <Route path="*" element={<NotFound />}></Route>
             </Routes>

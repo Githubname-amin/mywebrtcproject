@@ -2,6 +2,8 @@
   "files": [],
   "compilerOptions": {
     "esModuleInterop": true,
+    "strict": false,
+    "noImplicitAny": false
   },
   "references": [
     {
