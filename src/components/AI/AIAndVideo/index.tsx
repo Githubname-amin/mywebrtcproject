@@ -1,6 +1,6 @@
-import { Button, Card, Layout, message, Table, Upload } from "antd";
+import { Button, Card, Layout, message, Table, Tabs, Upload } from "antd";
 import "./index.less";
-// import ShowVideo from "./Components/showVideo";
+// import ShowBox from "./Components/showBox";
 
 import {
   DeleteOutlined,
@@ -12,11 +12,70 @@ import { useRef, useState } from "react";
 
 const AIAndVideo = () => {
   // data-----------------------------
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]); // 存储选中的文件
   const [mediaUrl, setMediaUrl] = useState(null);
   const mediaRef = useRef(null);
   const [currentFile, setCurrentFile] = useState(null); // 当前预览的文件
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  const tabItems = [
+    {
+      key: "1",
+      label: "转录结果",
+      children: (
+        <>
+          <div>
+            {!currentFile ? (
+              <div>请上传文件</div>
+            ) : (
+              <div>
+                {currentFile && (
+                  <div>
+                    <span>当前名称:{currentFile.name}</span>
+                  </div>
+                )}
+                {!currentFile.transcription ? (
+                  <div>未转录</div>
+                ) : (
+                  <Table
+                    dataSource={currentFile.transcription.map(
+                      (item: any, index: any) => ({
+                        ...item,
+                        key: index,
+                      })
+                    )}
+                    columns={transcriptionColumns}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      ),
+    },
+  ];
+
+  // DOM
+  const transcriptionColumns = [
+    {
+      title: "时间点",
+      dataIndex: "time",
+      key: "time",
+      width: "30%",
+      render: (_, record) => {
+        <Button
+          type="link"
+          onClick={() => {
+            handleTimeClick(record);
+          }}
+          style={{ padding: 0 }}
+        >
+          [{formatTimeFn(record.start)} - {formatTimeFn(record.end)}]
+        </Button>;
+      },
+    },
+  ];
 
   // Function===================================
   // 用来上传文件
@@ -45,6 +104,7 @@ const AIAndVideo = () => {
       type: isVideo ? "video" : "audio",
       file: file,
       status: "waiting",
+      transcription: null,
     };
     setUploadedFiles((prev) => [...prev, newFile]);
     // 如果是第一个文件，动设置为当前预览文件
@@ -93,6 +153,126 @@ const AIAndVideo = () => {
     setSelectedFiles(fileIds);
   };
 
+  // 转录函数
+  const handleTranscript = async () => {
+    if (!currentFile) return;
+    if (isTranscribing) {
+      // 转录中触发这个函数，则发起停止请求
+      setIsTranscribing(false);
+      try {
+        const response = await fetch(
+          "http://localhost:6688/api/stop-transcribe",
+          {
+            method: "POST",
+          }
+        );
+        console.log("停止转录响应", response);
+      } catch (error) {
+        console.log("停止转录失败", error);
+        message.error("停止转录失败" + error);
+      }
+    } else {
+      // 非转录中触发这个函数，则发起转录请求
+      if (selectedFiles.length === 0) {
+        message.error("请选择要转录的文件");
+        return;
+      }
+      setIsTranscribing(true);
+      message.loading("转录中...");
+      try {
+        for (const fileId of selectedFiles) {
+          const file = uploadedFiles.find((f) => f.id === selectedFiles[0]);
+          if (!file) continue; // 如果文件不存在，则跳过
+          if (file.status === "done") {
+            message.info(`文件-${file.name}已转录`);
+          }
+          // 考虑是续传的状态怎么办
+
+          // 在文件源中更新文件状态
+          setUploadedFiles((prev) =>
+            prev.map((f) => {
+              if (f.id === fileId) {
+                f.status = "transcribing";
+                return f;
+              }
+              return f;
+            })
+          );
+
+          try {
+            const formData = new FormData();
+            formData.append("file", file.file, file.name);
+            const response = await fetch("http://localhost:6688/api/upload", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json();
+            console.log(`文件-${file.name}转录成功`, data, response);
+            if (response.status === 499) {
+              // 特定的响应码
+              setUploadedFiles((prev) =>
+                prev.map((f) =>
+                  f.id === fileId ? { ...f, status: "interrupted" } : f
+                )
+              );
+              break; // 中断后续文件的转录
+            }
+            // 如果不ok
+
+            if (!response.ok) {
+              throw new Error(`转录失败: ${file.name}`);
+            }
+
+            // 确定转录完成，先不考虑中断
+            setUploadedFiles((prev) => {
+              const newFiles = prev.map((f) =>
+                f.id === fileId
+                  ? {
+                      ...f,
+                      status: "done",
+                      transcription: data.transcription,
+                    }
+                  : f
+              );
+              return newFiles;
+            });
+          } catch (error) {
+            console.log(`文件-${file.name}转录失败`, error);
+          }
+        }
+      } catch (error) {
+        console.log("转录失败", error);
+        message.error("转录失败" + error);
+      } finally {
+        setIsTranscribing(false);
+        message.destroy();
+      }
+    }
+  };
+
+  // 用来跳转对应的时间点
+  const handleTimeClick = (record: any) => {
+    console.log("打印时间点", record);
+    if (!mediaRef.current) return;
+    mediaRef.current.currentTime = record;
+    mediaRef.current.play();
+  };
+
+  // 用来做时间格式化
+  const formatTimeFn = (time: any) => {
+    const hours = Math.floor(time / 3600);
+    const minutes = Math.floor((time % 3600) / 60);
+    const seconds = time % 60;
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, "0")}:${minutes
+        .toString()
+        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    }
+    return `${minutes.toString().padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
   return (
     <>
       <Layout style={{ minHeight: "90vh", background: "#f0f2f5" }}>
@@ -136,7 +316,7 @@ const AIAndVideo = () => {
                     className="deleteBtn"
                     style={{ width: 100 }}
                     icon={<UploadOutlined />}
-                    onClick={() => handleDeleteSelectedFiles(selectedFiles)}
+                    onClick={() => handleDeleteSelectedFiles()}
                   >
                     删除选中
                   </Button>
@@ -144,8 +324,10 @@ const AIAndVideo = () => {
                     className="transcriptBtn"
                     style={{ width: 100 }}
                     icon={<UploadOutlined />}
+                    onClick={() => handleTranscript()}
+                    danger={isTranscribing}
                   >
-                    转录选中
+                    {isTranscribing ? "停止转入" : "开始转录"}
                   </Button>
 
                   {/* <div className="upload-tips">支持多个视频和音频文件格式</div> */}
@@ -243,7 +425,14 @@ const AIAndVideo = () => {
             </div>
           </div>
           {/* 用来展示效果 */}
-          <div className="showBottom"></div>
+          <div className="showBottom">
+            <Card style={{ width: 1200, height: 600 }}>
+              {/* <ShowBox></ShowBox> */}
+              <Card className="feature-card">
+                <Tabs items={tabItems} />
+              </Card>
+            </Card>
+          </div>
         </div>
       </Layout>
     </>
