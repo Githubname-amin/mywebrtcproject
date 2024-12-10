@@ -18,6 +18,8 @@ const AIAndVideo = () => {
   const mediaRef = useRef(null);
   const [currentFile, setCurrentFile] = useState(null); // 当前预览的文件
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
+  const [isTranscribingLoading, setIsTranscribingLoading] = useState(false);
 
   const tabItems = [
     {
@@ -155,10 +157,15 @@ const AIAndVideo = () => {
 
   // 转录函数
   const handleTranscript = async () => {
+    setIsTranscribingLoading(true);
+    setTimeout(() => {
+      setIsTranscribingLoading(false);
+    }, 500);
     if (!currentFile) return;
     if (isTranscribing) {
       // 转录中触发这个函数，则发起停止请求
       setIsTranscribing(false);
+      setAbortTranscribing(true);
       try {
         const response = await fetch(
           "http://localhost:6688/api/stop-transcribe",
@@ -170,7 +177,10 @@ const AIAndVideo = () => {
       } catch (error) {
         console.log("停止转录失败", error);
         message.error("停止转录失败" + error);
+      } finally {
+        setAbortTranscribing(false);
       }
+      return;
     } else {
       // 非转录中触发这个函数，则发起转录请求
       if (selectedFiles.length === 0) {
@@ -178,13 +188,27 @@ const AIAndVideo = () => {
         return;
       }
       setIsTranscribing(true);
+      setAbortTranscribing(false);
       message.loading("转录中...");
       try {
         for (const fileId of selectedFiles) {
+          // 检查是否已经请求终端
+          if (abortTranscribing) {
+            // 只将当前在转的文件状态改为终端
+            setUploadedFiles((prev) =>
+              prev.map((f) =>
+                f.status === "transcribing"
+                  ? { ...f, status: "interrupted" }
+                  : f
+              )
+            );
+            break;
+          }
           const file = uploadedFiles.find((f) => f.id === selectedFiles[0]);
           if (!file) continue; // 如果文件不存在，则跳过
           if (file.status === "done") {
-            message.info(`文件-${file.name}已转录`);
+            message.info(`文件-${file.name}已转录,跳过此文件`);
+            continue;
           }
           // 考虑是续传的状态怎么办
 
@@ -209,7 +233,7 @@ const AIAndVideo = () => {
             const data = await response.json();
             console.log(`文件-${file.name}转录成功`, data, response);
             if (response.status === 499) {
-              // 特定的响应码
+              // 特定的响应码表达本条转录的结果为中断的情况,只更新当前文件的状态
               setUploadedFiles((prev) =>
                 prev.map((f) =>
                   f.id === fileId ? { ...f, status: "interrupted" } : f
@@ -223,21 +247,32 @@ const AIAndVideo = () => {
               throw new Error(`转录失败: ${file.name}`);
             }
 
-            // 确定转录完成，先不考虑中断
-            setUploadedFiles((prev) => {
-              const newFiles = prev.map((f) =>
-                f.id === fileId
-                  ? {
-                      ...f,
-                      status: "done",
-                      transcription: data.transcription,
-                    }
-                  : f
-              );
-              return newFiles;
-            });
+            // 确定转录完成
+            if (!abortTranscribing) {
+              setUploadedFiles((prev) => {
+                const newFiles = prev.map((f) =>
+                  f.id === fileId
+                    ? {
+                        ...f,
+                        status: "done",
+                        transcription: data.transcription,
+                      }
+                    : f
+                );
+                return newFiles;
+              });
+            }
           } catch (error) {
-            console.log(`文件-${file.name}转录失败`, error);
+            // 确定没有终端请求
+            if (!abortTranscribing) {
+              setUploadedFiles((prev) =>
+                prev.map((f) =>
+                  f.id === fileId ? { ...f, status: "error" } : f
+                )
+              );
+              console.log(`文件-${file.name}转录失败`, error);
+              message.error(`文件-${file.name}转录失败: ${error.message}`);
+            }
           }
         }
       } catch (error) {
@@ -245,6 +280,7 @@ const AIAndVideo = () => {
         message.error("转录失败" + error);
       } finally {
         setIsTranscribing(false);
+        setAbortTranscribing(false);
         message.destroy();
       }
     }
@@ -324,8 +360,9 @@ const AIAndVideo = () => {
                     className="transcriptBtn"
                     style={{ width: 100 }}
                     icon={<UploadOutlined />}
-                    onClick={() => handleTranscript()}
+                    onClick={handleTranscript}
                     danger={isTranscribing}
+                    loading={isTranscribingLoading}
                   >
                     {isTranscribing ? "停止转入" : "开始转录"}
                   </Button>
