@@ -4,6 +4,7 @@ import "./index.less";
 
 import {
   DeleteOutlined,
+  DownloadOutlined,
   SyncOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -20,6 +21,10 @@ const AIAndVideo = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
   const [isTranscribingLoading, setIsTranscribingLoading] = useState(false);
+  // 获取上传视频中已经转录的个数
+  const getSelectedTranscribedFilesCount = () => {
+    return uploadedFiles.filter((f) => f.status === "done").length;
+  };
   // DOM
   const transcriptionColumns = [
     {
@@ -59,6 +64,38 @@ const AIAndVideo = () => {
             }}
           >
             查看数据
+          </div>
+          <div>
+            {selectedFiles.length > 0 && (
+              <span>
+                已选择 {getSelectedTranscribedFilesCount()} 个转录文件
+              </span>
+            )}
+          </div>
+          <div>
+            <Button.Group size="small">
+              <Button
+                onClick={() => handleExport("vtt")}
+                icon={<DownloadOutlined />}
+                disabled={!currentFile?.transcription}
+              >
+                VTT
+              </Button>
+              <Button
+                onClick={() => handleExport("srt")}
+                icon={<DownloadOutlined />}
+                disabled={!currentFile?.transcription}
+              >
+                SRT
+              </Button>
+              <Button
+                onClick={() => handleExport("txt")}
+                icon={<DownloadOutlined />}
+                disabled={!currentFile?.transcription}
+              >
+                TXT
+              </Button>
+            </Button.Group>
           </div>
           <div>
             {!currentFile ? (
@@ -331,6 +368,77 @@ const AIAndVideo = () => {
     return `${minutes.toString().padStart(2, "0")}:${Number(
       seconds.toString().padStart(2, "0")
     ).toFixed(2)}`;
+  };
+
+  // 下载字幕
+  const handleExport = (type: string) => {
+    // 检查是否选定了文件且文件已转录完成
+    if (
+      currentFile &&
+      currentFile.transcription &&
+      currentFile.status === "done"
+    ) {
+      // 获取字幕数据对象
+      const subtitles = currentFile.transcription;
+
+      let content = "";
+
+      if (type === "srt") {
+        // 转换为 SRT 格式
+        content = subtitles
+          .map((sub, index) => {
+            const start = formatTime(sub.start);
+            const end = formatTime(sub.end);
+            return `${index + 1}\n${start} --> ${end}\n${sub.text}\n`;
+          })
+          .join("\n");
+      } else if (type === "vtt") {
+        // 转换为 VTT 格式
+        content =
+          "WEBVTT\n\n" +
+          subtitles
+            .map((sub) => {
+              const start = formatTime(sub.start);
+              const end = formatTime(sub.end);
+              return `${start} --> ${end}\n${sub.text}\n`;
+            })
+            .join("\n");
+      } else if (type === "txt") {
+        content = subtitles
+          .map((sub) => {
+            const start = formatTime(sub.start);
+            const end = formatTime(sub.end);
+            return `[${start} - ${end}] ${sub.text}`;
+          })
+          .join("\n");
+      } else {
+        console.error("Unsupported format");
+        return;
+      }
+
+      // 创建下载的 Blob 对象
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+
+      // 创建下载链接
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${currentFile.name}.${type}`;
+      link.click();
+
+      // 释放 URL 对象
+      URL.revokeObjectURL(url);
+    } else {
+      console.error("No valid file or transcription available");
+    }
+  };
+
+  // 格式化时间函数 (hh:mm:ss,ms)
+  const formatTime = (seconds: any) => {
+    const date = new Date(0);
+    date.setSeconds(seconds);
+    const ms = seconds % 1;
+    return date.toISOString().substr(11, 8) + `,${Math.floor(ms * 1000)}`;
   };
 
   return (
