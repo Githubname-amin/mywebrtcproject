@@ -447,29 +447,28 @@ const AIAndVideo = () => {
         <div className="AIAndVideoPage">
           {/* 用来操作上传视频，开始转录制 */}
           <div className="actionTop">
-            <div className="showVideo">
-              {/* 展示视频组件 */}
-              <Card style={{ width: 800, height: 400 }}>
-                {/* <ShowVideo></ShowVideo> */}
-                <div className="video-container">
-                  {mediaUrl ? (
-                    <>
-                      <video
-                        ref={mediaRef}
-                        src={mediaUrl.url}
-                        controls
-                        className="video-player"
-                      />
-                    </>
-                  ) : (
-                    ""
-                  )}
-                </div>
-              </Card>
-            </div>
+            {/* 展示视频组件 */}
+            {/* <Card style={{ width: 800, height: 400 }}> */}
+            <Card className="showVideo">
+              {/* <ShowVideo></ShowVideo> */}
+              <div className="video-container">
+                {mediaUrl ? (
+                  <>
+                    <video
+                      ref={mediaRef}
+                      src={mediaUrl.url}
+                      controls
+                      className="video-player"
+                    />
+                  </>
+                ) : (
+                  ""
+                )}
+              </div>
+            </Card>
             {/* 用来上传视频 */}
             <div className="upload">
-              <Card style={{ width: 400, height: 100 }}>
+              <Card className="uploadCardOne">
                 <div className="upload-section">
                   <Upload
                     beforeUpload={handleUpload}
@@ -502,7 +501,7 @@ const AIAndVideo = () => {
                   {/* <div className="upload-tips">支持多个视频和音频文件格式</div> */}
                 </div>
               </Card>
-              <Card style={{ width: 400, height: 280 }}>
+              <Card className="uploadCardTwo">
                 <div>
                   <Table
                     dataSource={uploadedFiles}
@@ -595,7 +594,7 @@ const AIAndVideo = () => {
           </div>
           {/* 用来展示效果 */}
           <div className="showBottom">
-            <Card style={{ width: 1200, height: 600 }}>
+            <Card className="showBottomCard">
               {/* <ShowBox></ShowBox> */}
               <Card className="feature-card">
                 <Tabs items={tabItems} />
