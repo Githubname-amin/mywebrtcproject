@@ -20,13 +20,46 @@ const AIAndVideo = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
   const [isTranscribingLoading, setIsTranscribingLoading] = useState(false);
-
+  // DOM
+  const transcriptionColumns = [
+    {
+      title: "时间点",
+      dataIndex: "time",
+      key: "time",
+      width: "30%",
+      render: (_, record) => {
+        return (
+          <Button
+            type="link"
+            onClick={() => {
+              handleTimeClick(record.start);
+            }}
+            style={{ padding: 0 }}
+          >
+            [{formatTimeFn(record.start)} - {formatTimeFn(record.end)}]
+          </Button>
+        );
+      },
+    },
+    {
+      title: "内容",
+      dataIndex: "text",
+      key: "text",
+    },
+  ];
   const tabItems = [
     {
       key: "1",
       label: "转录结果",
       children: (
         <>
+          <div
+            onClick={() => {
+              console.log("当前日志", currentFile);
+            }}
+          >
+            查看数据
+          </div>
           <div>
             {!currentFile ? (
               <div>请上传文件</div>
@@ -55,27 +88,6 @@ const AIAndVideo = () => {
           </div>
         </>
       ),
-    },
-  ];
-
-  // DOM
-  const transcriptionColumns = [
-    {
-      title: "时间点",
-      dataIndex: "time",
-      key: "time",
-      width: "30%",
-      render: (_, record) => {
-        <Button
-          type="link"
-          onClick={() => {
-            handleTimeClick(record);
-          }}
-          style={{ padding: 0 }}
-        >
-          [{formatTimeFn(record.start)} - {formatTimeFn(record.end)}]
-        </Button>;
-      },
     },
   ];
 
@@ -246,6 +258,7 @@ const AIAndVideo = () => {
             if (!response.ok) {
               throw new Error(`转录失败: ${file.name}`);
             }
+            console.log("转录成功开始写入", data, abortTranscribing);
 
             // 确定转录完成
             if (!abortTranscribing) {
@@ -261,6 +274,15 @@ const AIAndVideo = () => {
                 );
                 return newFiles;
               });
+            }
+
+            // 转录完成了,设置当前预览的对象
+            if (currentFile?.id === fileId) {
+              setCurrentFile((prev) => ({
+                ...prev,
+                status: "done",
+                transcription: data.transcription,
+              }));
             }
           } catch (error) {
             // 确定没有终端请求
@@ -288,7 +310,7 @@ const AIAndVideo = () => {
 
   // 用来跳转对应的时间点
   const handleTimeClick = (record: any) => {
-    console.log("打印时间点", record);
+    console.log("打印时间点", record, mediaRef.current);
     if (!mediaRef.current) return;
     mediaRef.current.currentTime = record;
     mediaRef.current.play();
@@ -302,11 +324,13 @@ const AIAndVideo = () => {
     if (hours > 0) {
       return `${hours.toString().padStart(2, "0")}:${minutes
         .toString()
-        .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+        .padStart(2, "0")}:${Number(
+        seconds.toString().padStart(2, "0")
+      ).toFixed(2)}`;
     }
-    return `${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
+    return `${minutes.toString().padStart(2, "0")}:${Number(
+      seconds.toString().padStart(2, "0")
+    ).toFixed(2)}`;
   };
 
   return (
