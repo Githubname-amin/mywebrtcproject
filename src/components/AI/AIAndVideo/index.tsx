@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { RcFile } from "antd/es/upload";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 const AIAndVideo = () => {
   // data-----------------------------
@@ -21,9 +22,141 @@ const AIAndVideo = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
   const [isTranscribingLoading, setIsTranscribingLoading] = useState(false);
+  const [summaryLoadingFiles, setSummaryLoadingFiles] = useState(new Set()); // 正在加载摘要的文件集合
+  const [detailedSummaryLoadingFiles, setDetailedSummaryLoadingFiles] =
+    useState(new Set()); // 正在加载详细摘要的文件集合
+
   // 获取上传视频中已经转录的个数
   const getSelectedTranscribedFilesCount = () => {
     return uploadedFiles.filter((f) => f.status === "done").length;
+  };
+  // 检查是否有转录结果的函数
+  const checkTranscription = () => {
+    if (!currentFile?.transcription || currentFile.transcription.length === 0) {
+      message.warning("需等待视频/音频完成转录");
+      return false;
+    }
+    return true;
+  };
+
+  // 用来生成总结
+  const handleSummary = async () => {
+    if (!checkTranscription()) return;
+    if (!currentFile) return;
+
+    const fileId = currentFile.id;
+    if (summaryLoadingFiles.has(fileId)) {
+      message.warning("该文件正在生成总结");
+      return;
+    }
+    const text = currentFile.transcription
+      .map((item: any) => item.text)
+      .join(" ");
+    try {
+      setSummaryLoadingFiles((prev) => new Set([...prev, fileId]));
+
+      //找到当前操作文件在总数据集的位置
+      const fileRef = uploadedFiles.find((item: any) => item.id === fileId);
+      if (!fileRef) return;
+
+      // 开始更改数据集里的数据
+      fileRef.detailedSummary = "";
+      // 强制更新 uploadedFiles
+      setUploadedFiles([...uploadedFiles]);
+
+      // 生成总结请求
+      const response = await fetch("http://localhost:6688/api/summary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!response.ok) {
+        throw new Error("生成总结失败");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder("utf-8");
+      // console.log("生成总结成功", decoder, reader);
+      let summaryText = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        summaryText += chunk;
+        // 直接更新文件引用中的内容
+        fileRef.detailedSummary = summaryText;
+        // 变更currentFile
+        setCurrentFile({ ...currentFile, detailedSummary: summaryText });
+        // 强制更新 uploadedFiles
+        setUploadedFiles([...uploadedFiles]);
+      }
+    } catch (error) {
+      console.log("总结失败", error);
+      message.error("总结失败" + error.message);
+    } finally {
+      setDetailedSummaryLoadingFiles((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(fileId);
+        return newSet;
+      });
+    }
+  };
+
+  // 导出总结
+  const handleExportSummary = async (summaryText, type = "summary") => {
+    if (!checkTranscription()) return;
+    if (!currentFile) return;
+    if (!summaryText) {
+      message.warning("请先完成视频/音频总结");
+      return;
+    }
+    if (typeof summaryText !== "string") {
+      message.warning("总结格式错误");
+      return;
+    }
+    try {
+      const response = await fetch("http://localhost:6688/api/export/summary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: summaryText, type }),
+      });
+      if (!response.ok) {
+        throw new Error("总结导出失败");
+      }
+      // 下载文件
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${type}_${currentFile.name}_${Date.now()
+        .toString()
+        .slice(0, 10)}.md`;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+      message.success("总结导出成功");
+    } catch (error) {
+      console.log("总结导出失败", error);
+      message.error("总结导出失败" + error.message);
+    }
+  };
+  // 修改内容展示组件
+  const SummaryContent = ({ fileId, content, isLoading }: any) => {
+    const containerId = `summary-content-${fileId}`;
+
+    // 直接使用传入的 content，不再使用本地状态
+    return (
+      <div key={fileId} id={containerId} className="markdown-content">
+        <ReactMarkdown>{content || ""}</ReactMarkdown>
+      </div>
+    );
   };
   // DOM
   const transcriptionColumns = [
@@ -126,6 +259,53 @@ const AIAndVideo = () => {
         </>
       ),
     },
+    {
+      key: "2",
+      label: "简单总结",
+      children: (
+        <div>
+          {currentFile && (
+            <div
+              onClick={() => {
+                console.log("查看总结", currentFile, uploadedFiles);
+              }}
+            >
+              <span>当前文件： {currentFile.name}</span>
+            </div>
+          )}
+          <div>
+            <Button onClick={handleSummary}>生成总结</Button>
+            <Button
+              onClick={() => {
+                handleExportSummary(currentFile.detailedSummary, "summary");
+              }}
+            >
+              导出总结
+            </Button>
+          </div>
+          {!currentFile ? (
+            <div>
+              <p>请在上方选择要查看总结的文件</p>
+            </div>
+          ) : !currentFile.transcription ? (
+            <div>
+              <p>当前文件未转录</p>
+            </div>
+          ) : !currentFile.detailedSummary ? (
+            <div>
+              <p>当前文件未生成总结</p>
+            </div>
+          ) : (
+            <SummaryContent
+              fileId={currentFile.id}
+              content={currentFile.detailedSummary}
+              // isLoading={summaryLoadingFiles.has(currentFile.id)}
+              isLoading={false}
+            />
+          )}
+        </div>
+      ),
+    },
   ];
 
   // Function===================================
@@ -156,6 +336,9 @@ const AIAndVideo = () => {
       file: file,
       status: "waiting",
       transcription: null,
+      summary: "",
+      detailedSummary: "",
+      mindmapData: null,
     };
     setUploadedFiles((prev) => [...prev, newFile]);
     // 如果是第一个文件，动设置为当前预览文件
