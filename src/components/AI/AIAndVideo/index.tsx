@@ -274,11 +274,22 @@ const AIAndVideo = () => {
             </div>
           )}
           <div>
-            <Button onClick={handleSummary}>生成总结</Button>
+            <Button
+              loading={detailedSummaryLoadingFiles.has(currentFile?.id)}
+              onClick={handleSummary}
+              disabled={
+                !currentFile?.transcription ||
+                detailedSummaryLoadingFiles.has(currentFile?.id)
+              }
+            >
+              生成总结
+            </Button>
             <Button
               onClick={() => {
                 handleExportSummary(currentFile.detailedSummary, "summary");
               }}
+              icon={<DownloadOutlined />}
+              disabled={!currentFile?.detailedSummary}
             >
               导出总结
             </Button>
