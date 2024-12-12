@@ -60,7 +60,7 @@ const AIAndVideo = () => {
       if (!fileRef) return;
 
       // 开始更改数据集里的数据
-      fileRef.detailedSummary = "";
+      fileRef.summary = "";
       // 强制更新 uploadedFiles
       setUploadedFiles([...uploadedFiles]);
 
@@ -88,15 +88,77 @@ const AIAndVideo = () => {
         const chunk = decoder.decode(value, { stream: true });
         summaryText += chunk;
         // 直接更新文件引用中的内容
-        fileRef.detailedSummary = summaryText;
+        fileRef.summary = summaryText;
         // 变更currentFile
-        setCurrentFile({ ...currentFile, detailedSummary: summaryText });
+        setCurrentFile({ ...currentFile, summary: summaryText });
         // 强制更新 uploadedFiles
         setUploadedFiles([...uploadedFiles]);
       }
     } catch (error) {
       console.log("总结失败", error);
       message.error("总结失败" + error.message);
+    } finally {
+      setSummaryLoadingFiles((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(fileId);
+        return newSet;
+      });
+    }
+  };
+
+  // 用来生成详细总结
+  const handleDetailSummary = async () => {
+    if (!checkTranscription()) return;
+    if (!currentFile) return;
+
+    const fileId = currentFile.id;
+    if (detailedSummaryLoadingFiles.has(fileId)) {
+      message.warning("该文件正在生成详细总结");
+      return;
+    }
+
+    const text = currentFile.transcription.map((item) => item.text).join("\n");
+    try {
+      setDetailedSummaryLoadingFiles((prev) => new Set([...prev, fileId]));
+
+      // 找到文件在uploadFiles的引用
+      const fileRef = uploadedFiles.find((f) => f.id === fileId);
+      if (!fileRef) return;
+      // 初始化内容
+      fileRef.detailedSummary = "";
+      // 强制更新 数据源
+      setUploadedFiles([...uploadedFiles]);
+      const response = await fetch("http://localhost:6688/api/detailSummary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!response.ok) {
+        throw new Error("生成详细总结失败");
+      }
+      console.log("查看详细总结", response);
+      // 开始更新数据
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let summaryText = "";
+      while (true) {
+        const { done, value } = await reader?.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        summaryText += chunk;
+
+        // 直接更新文件引用中的内容
+        fileRef.detailedSummary = summaryText;
+        // 变更currentFile
+        setCurrentFile({ ...currentFile, detailedSummary: summaryText });
+        // 强制更新，更新视图
+        setUploadedFiles([...uploadedFiles]);
+      }
+    } catch (error) {
+      console.log("生成详细总结失败", error);
+      message.error("生成详细总结失败:" + error.message);
     } finally {
       setDetailedSummaryLoadingFiles((prev) => {
         const newSet = new Set(prev);
@@ -275,8 +337,66 @@ const AIAndVideo = () => {
           )}
           <div>
             <Button
-              loading={detailedSummaryLoadingFiles.has(currentFile?.id)}
+              loading={summaryLoadingFiles.has(currentFile?.id)}
               onClick={handleSummary}
+              disabled={
+                !currentFile?.transcription ||
+                summaryLoadingFiles.has(currentFile?.id)
+              }
+            >
+              生成总结
+            </Button>
+            <Button
+              onClick={() => {
+                handleExportSummary(currentFile.summary, "summary");
+              }}
+              icon={<DownloadOutlined />}
+              disabled={!currentFile?.summary}
+            >
+              导出总结
+            </Button>
+          </div>
+          {!currentFile ? (
+            <div>
+              <p>请在上方选择要查看总结的文件</p>
+            </div>
+          ) : !currentFile.transcription ? (
+            <div>
+              <p>当前文件未转录</p>
+            </div>
+          ) : !currentFile.summary ? (
+            <div>
+              <p>当前文件未生成总结</p>
+            </div>
+          ) : (
+            <SummaryContent
+              fileId={currentFile.id}
+              content={currentFile.summary}
+              // isLoading={summaryLoadingFiles.has(currentFile.id)}
+              isLoading={false}
+            />
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "3",
+      label: "详细总结",
+      children: (
+        <div>
+          {currentFile && (
+            <div
+              onClick={() => {
+                console.log("查看", currentFile, uploadedFiles);
+              }}
+            >
+              <span>当前文件： {currentFile.name}</span>
+            </div>
+          )}
+          <div>
+            <Button
+              loading={detailedSummaryLoadingFiles.has(currentFile?.id)}
+              onClick={handleDetailSummary}
               disabled={
                 !currentFile?.transcription ||
                 detailedSummaryLoadingFiles.has(currentFile?.id)
@@ -286,7 +406,7 @@ const AIAndVideo = () => {
             </Button>
             <Button
               onClick={() => {
-                handleExportSummary(currentFile.detailedSummary, "summary");
+                handleExportSummary(currentFile.detailedSummary, "detailed");
               }}
               icon={<DownloadOutlined />}
               disabled={!currentFile?.detailedSummary}
@@ -310,8 +430,7 @@ const AIAndVideo = () => {
             <SummaryContent
               fileId={currentFile.id}
               content={currentFile.detailedSummary}
-              // isLoading={summaryLoadingFiles.has(currentFile.id)}
-              isLoading={false}
+              isLoading={detailedSummaryLoadingFiles.has(currentFile.id)}
             />
           )}
         </div>
