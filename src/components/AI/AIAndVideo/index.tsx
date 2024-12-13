@@ -718,74 +718,78 @@ const AIAndVideo = () => {
       key: "5",
       label: "模拟对话",
       children: (
-        <div>
+        <div className="chatContainer">
           {!currentFile ? (
-            <div>
+            <div className="noChatContainer">
               <p>请在上方选择要查看模拟对话的文件</p>
             </div>
           ) : !currentFile.transcription ? (
-            <div>
+            <div className="noChatContainer">
               <p>当前文件未转录</p>
             </div>
           ) : (
-            <div>
-              <div>
+            <div className="chatContainer">
+              <div className="chatContainerHeader">
                 <span>当前文件： {currentFile.name}</span>
               </div>
-              <div>
-                <div>
-                  {" "}
-                  {/* 这里还有一个消息展示页面 */}
-                  {messages.map((message, index) => (
-                    <div key={index}>
-                      <div>
-                        <div>
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
-                        </div>
-                        <Button
-                          type="text"
-                          className="copy-button"
-                          icon={<CopyOutlined />}
-                          onClick={() => {
-                            handleCopyMessage(message.content);
-                          }}
-                        >
-                          复制
-                        </Button>
-                      </div>
-                      <div></div>
-                    </div>
-                  ))}
-                  {/* <div ref={messagesEndRef} /> */}
-                </div>
-                {/* 交互输入框和按钮 */}
-                <div>
-                  <TextArea
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onCompositionStart={() => setIsComposing(true)}
-                    onCompositionEnd={() => setIsComposing(false)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        if (!isComposing) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }
-                    }}
-                    placeholder="输入消息按Enter发送，Shift+Enter换行"
-                    autoSize={{ minRows: 1, maxRows: 5 }}
-                    disabled={isGenerating}
-                  />
-                  <Button
-                    type="primary"
-                    icon={isGenerating ? <StopOutlined /> : <SendOutlined />}
-                    onClick={handleSendMessage}
-                    danger={isGenerating}
+              <div className="chatContainerContent">
+                {/* 这里还有一个消息展示页面 */}
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`messageWrapper ${
+                      message.role === "user" ? "user" : "assistant"
+                    }`}
                   >
-                    {isGenerating ? "停止" : "发送"}
-                  </Button>
-                </div>
+                    <div className="messageContent">
+                      <div className="messageMarkdown">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
+                      <Button
+                        type="text"
+                        className="copyButton"
+                        icon={<CopyOutlined />}
+                        onClick={() => {
+                          handleCopyMessage(message.content);
+                        }}
+                      >
+                        复制
+                      </Button>
+                    </div>
+                    <div className="messageTime">
+                      {new Date().toLocaleTimeString()}
+                    </div>
+                  </div>
+                ))}
+                {/* <div ref={messagesEndRef} /> */}
+              </div>
+              {/* 交互输入框和按钮 */}
+              <div className="inputContainer">
+                <TextArea
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      if (!isComposing) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                  placeholder="输入消息按Enter发送，Shift+Enter换行"
+                  autoSize={{ minRows: 1, maxRows: 5 }}
+                  disabled={isGenerating}
+                />
+                <Button
+                  type="primary"
+                  icon={isGenerating ? <StopOutlined /> : <SendOutlined />}
+                  onClick={handleSendMessage}
+                  danger={isGenerating}
+                >
+                  {isGenerating ? "停止" : "发送"}
+                </Button>
               </div>
             </div>
           )}
