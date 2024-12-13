@@ -9,8 +9,10 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import { RcFile } from "antd/es/upload";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import jsMind from "jsmind";
+import "jsmind/style/jsmind.css";
 
 const AIAndVideo = () => {
   // data-----------------------------
@@ -23,6 +25,7 @@ const AIAndVideo = () => {
   const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
   const [isTranscribingLoading, setIsTranscribingLoading] = useState(false);
   const [summaryLoadingFiles, setSummaryLoadingFiles] = useState(new Set()); // 正在加载摘要的文件集合
+  const [mindmapLoadingFiles, setMindmapLoadingFiles] = useState(new Set()); // 正在加载思维导图的文件集合
   const [detailedSummaryLoadingFiles, setDetailedSummaryLoadingFiles] =
     useState(new Set()); // 正在加载详细摘要的文件集合
 
@@ -219,6 +222,128 @@ const AIAndVideo = () => {
         <ReactMarkdown>{content || ""}</ReactMarkdown>
       </div>
     );
+  };
+
+  // 生成思维导图
+  const handleMindMap = async () => {
+    if (!checkTranscription()) return;
+    if (!currentFile) return;
+    const fileId = currentFile.id;
+    if (mindmapLoadingFiles.has(fileId)) {
+      message.warning("该文件正在生成思维导图");
+      return;
+    }
+    const text = currentFile.transcription.map((item) => item.text).join("\n");
+    try {
+      // 将文件添加到正在生成的文件集合中
+      setMindmapLoadingFiles((prev) => new Set([...prev, fileId]));
+
+      // 找到文件在uploadFiles的引用
+      const fileRef = uploadedFiles.find((f) => f.id === fileId);
+      if (!fileRef) return;
+      // 初始化内容
+      fileRef.mindmapData = "";
+      // 强制更新 uploadedFiles 以触发重渲染
+      setUploadedFiles([...uploadedFiles]);
+      const response = await fetch("http://localhost:6688/api/mindmap", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!response.ok) {
+        throw new Error("生成思维导图失败");
+      }
+      // 开始更新数据
+      const data = await response.json();
+      // console.log("查看思维导图数据", data);
+
+      // 直接更新文件引用中的内容
+      fileRef.mindmapData = data.mindmap;
+
+      // 强制更新 uploadedFiles 以触发重渲染
+      setCurrentFile({ ...currentFile, mindmapData: data.mindmap });
+      setUploadedFiles([...uploadedFiles]);
+    } catch (error) {
+      console.log("生成思维导图失败", error);
+      message.error("生成思维导图失败:" + error.message);
+    } finally {
+      setMindmapLoadingFiles((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(fileId);
+        return newSet;
+      });
+    }
+  };
+
+  // 设定渲染图组件
+  const renderJSMind = (containerId: any, content: string) => {
+    if (content) {
+      const options = {
+        container: containerId,
+        theme: "primary",
+        editable: false,
+        view: {
+          hmargin: 400,
+          vmargin: 500,
+          line_width: 2,
+          line_color: "#558B2F",
+        },
+        layout: {
+          hspace: 30,
+          vspace: 20,
+          pspace: 13,
+        },
+      };
+
+      const jm = new jsMind(options);
+      const data = typeof content === "string" ? JSON.parse(content) : content;
+      // console.log(
+      //   "查看思维导图数据",
+      //   containerId,
+      //   "12312",
+      //   document.getElementById(containerId),
+      //   data
+      // );
+
+      jm.show(data);
+    }
+  };
+
+  useEffect(() => {
+    if (currentFile && currentFile.mindmapData) {
+      renderJSMind(`mindmap-${currentFile.id}`, currentFile.mindmapData);
+    }
+  }, [currentFile]);
+  // 思维导图组件
+  const MindmapContent = ({ fileId, content, isLoading }: any) => {
+    const containerId = `mindmap-${fileId}`;
+    // console.log("查看内容111", containerId, "124214", content);
+
+    // 如果正在加载，显示 loading 图标
+    if (isLoading) {
+      return (
+        <div id={containerId} className="mindmap-container">
+          <div className="mindmap-loading">
+            <div className="loading-spinner"></div>
+            <p>正在生成思维导图...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // 如果有内容，显示内容
+    if (content) {
+      console.log("进到内容");
+      return (
+        <div key={fileId} id={containerId} className="mindmap-container" />
+      );
+    }
+    console.log("落到没内容");
+
+    // 如果既不是加载中也没有内容，返回空容器
+    return <div id={containerId} className="mindmap-container" />;
   };
   // DOM
   const transcriptionColumns = [
@@ -436,13 +561,62 @@ const AIAndVideo = () => {
         </div>
       ),
     },
+    {
+      key: "4",
+      label: "思维导图",
+      children: (
+        <div>
+          {currentFile && (
+            <div
+              onClick={() => {
+                console.log("查看", currentFile, uploadedFiles);
+              }}
+            >
+              <span>当前文件： {currentFile.name}</span>
+            </div>
+          )}
+          <Button
+            loading={mindmapLoadingFiles.has(currentFile?.id)}
+            onClick={handleMindMap}
+            disabled={
+              !currentFile?.transcription ||
+              mindmapLoadingFiles.has(currentFile?.id)
+            }
+          >
+            {mindmapLoadingFiles.has(currentFile?.id)
+              ? "生成中"
+              : "生成思维导图"}
+          </Button>
+          {!currentFile ? (
+            <div>
+              <p>请在上方选择要查看思维导图的文件</p>
+            </div>
+          ) : !currentFile.transcription ? (
+            <div>
+              <p>当前文件未转录</p>
+            </div>
+          ) : !currentFile.mindmapData &&
+            !mindmapLoadingFiles.has(currentFile.id) ? (
+            <div>
+              <p>点击上方按钮生成思维导图</p>
+            </div>
+          ) : (
+            <MindmapContent
+              fileId={currentFile.id}
+              content={currentFile.mindmapData}
+              isLoading={mindmapLoadingFiles.has(currentFile.id)}
+            />
+          )}
+        </div>
+      ),
+    },
   ];
 
   // Function===================================
   // 用来上传文件
   const handleUpload = async (file: RcFile) => {
     // 先检查文件上传的是音频还是视频
-    console.log("查看上传的文件", file);
+    // console.log("查看上传的文件", file);
     const isVideo = file.type.startsWith("video/");
     const isAudio = file.type.startsWith("audio/");
     if (!isVideo && !isAudio) {
