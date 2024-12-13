@@ -3,8 +3,11 @@ import "./index.less";
 // import ShowBox from "./Components/showBox";
 
 import {
+  CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  SendOutlined,
+  StopOutlined,
   SyncOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -13,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import jsMind from "jsmind";
 import "jsmind/style/jsmind.css";
+import TextArea from "antd/es/input/TextArea";
 
 const AIAndVideo = () => {
   // data-----------------------------
@@ -20,6 +24,7 @@ const AIAndVideo = () => {
   const [selectedFiles, setSelectedFiles] = useState([]); // 存储选中的文件
   const [mediaUrl, setMediaUrl] = useState(null);
   const mediaRef = useRef(null);
+  const abortController = useRef(null); // 保存当前对话请求
   const [currentFile, setCurrentFile] = useState(null); // 当前预览的文件
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [abortTranscribing, setAbortTranscribing] = useState(false); // 停止转录状态
@@ -28,6 +33,11 @@ const AIAndVideo = () => {
   const [mindmapLoadingFiles, setMindmapLoadingFiles] = useState(new Set()); // 正在加载思维导图的文件集合
   const [detailedSummaryLoadingFiles, setDetailedSummaryLoadingFiles] =
     useState(new Set()); // 正在加载详细摘要的文件集合
+  const [messages, setMessages] = useState([]); //模拟对话返回的信息
+  const [inputMessage, setInputMessage] = useState(""); // 模拟对话中用户输入的话
+  const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
+  const [isGenerating, setIsGenerating] = useState(false); // 模型是否正在生成的状态
+  const messagesEndRef = useRef(null);
 
   // 获取上传视频中已经转录的个数
   const getSelectedTranscribedFilesCount = () => {
@@ -309,6 +319,100 @@ const AIAndVideo = () => {
 
       jm.show(data);
     }
+  };
+
+  // 发送对话信息
+  const handleSendMessage = async () => {
+    if (!checkTranscription()) return;
+    if (!currentFile) return;
+    if (!inputMessage.trim()) {
+      message.warning("请输入要发送的消息");
+      return;
+    }
+
+    // 如果正在生成,点击按钮停止生成
+    if (isGenerating) {
+      abortController.current.abort();
+      setIsGenerating(false);
+      // 更新信息
+      return;
+    }
+    // 正式请求,
+    const newMessage = { role: "user", content: inputMessage };
+    const currentMessage = [...messages, newMessage];
+    setMessages(currentMessage);
+    setInputMessage("");
+    setIsComposing(true);
+
+    // 创建新的 AbortController
+    abortController.current = new AbortController();
+
+    try {
+      const response = await fetch("http://localhost:6688/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: currentMessage,
+          context: currentFile.transcription
+            .map((item) => item.text)
+            .join("\n"),
+        }),
+        signal: abortController.current.signal,
+      });
+      if (!response.ok) {
+        throw new Error("对话失败");
+      }
+      console.log("查看对话", response);
+      const reader = response.body.getReader();
+      let aiResponse = "";
+      // 创建 AI 信息占位
+      setMessages([...currentMessage, { role: "assistant", content: "" }]);
+
+      while (true) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const chunk = new TextDecoder("utf-8").decode(value);
+          aiResponse += chunk;
+          setMessages([
+            ...currentMessage,
+            { role: "assistant", content: aiResponse },
+          ]);
+        } catch (error) {
+          if (error.name === "AbortError") {
+            break;
+          }
+          throw error;
+        }
+      }
+    } catch (error) {
+      if (error.name === "AbortError") {
+        message.info("对话已中断");
+      } else {
+        message.error("对话失败" + error.message);
+      }
+    } finally {
+      setIsComposing(false);
+      abortController.current = null;
+    }
+  };
+
+  // 复制chat
+  const handleCopyMessage = async (content: string) => {
+    console.log("复制chat", content, messages);
+    await navigator.clipboard
+      .writeText(content)
+      .then(() => {
+        message.success("复制成功");
+      })
+      .catch((error) => {
+        console.error("复制失败", error);
+        message.error("复制失败");
+      });
   };
 
   useEffect(() => {
@@ -606,6 +710,84 @@ const AIAndVideo = () => {
               content={currentFile.mindmapData}
               isLoading={mindmapLoadingFiles.has(currentFile.id)}
             />
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "5",
+      label: "模拟对话",
+      children: (
+        <div>
+          {!currentFile ? (
+            <div>
+              <p>请在上方选择要查看模拟对话的文件</p>
+            </div>
+          ) : !currentFile.transcription ? (
+            <div>
+              <p>当前文件未转录</p>
+            </div>
+          ) : (
+            <div>
+              <div>
+                <span>当前文件： {currentFile.name}</span>
+              </div>
+              <div>
+                <div>
+                  {" "}
+                  {/* 这里还有一个消息展示页面 */}
+                  {messages.map((message, index) => (
+                    <div key={index}>
+                      <div>
+                        <div>
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                        <Button
+                          type="text"
+                          className="copy-button"
+                          icon={<CopyOutlined />}
+                          onClick={() => {
+                            handleCopyMessage(message.content);
+                          }}
+                        >
+                          复制
+                        </Button>
+                      </div>
+                      <div></div>
+                    </div>
+                  ))}
+                  {/* <div ref={messagesEndRef} /> */}
+                </div>
+                {/* 交互输入框和按钮 */}
+                <div>
+                  <TextArea
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onCompositionStart={() => setIsComposing(true)}
+                    onCompositionEnd={() => setIsComposing(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        if (!isComposing) {
+                          e.preventDefault();
+                          handleSendMessage();
+                        }
+                      }
+                    }}
+                    placeholder="输入消息按Enter发送，Shift+Enter换行"
+                    autoSize={{ minRows: 1, maxRows: 5 }}
+                    disabled={isGenerating}
+                  />
+                  <Button
+                    type="primary"
+                    icon={isGenerating ? <StopOutlined /> : <SendOutlined />}
+                    onClick={handleSendMessage}
+                    danger={isGenerating}
+                  >
+                    {isGenerating ? "停止" : "发送"}
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       ),
