@@ -953,6 +953,9 @@ const AIAndVideo = () => {
               body: formData,
             });
             const data = await response.json();
+            if (!response.ok) {
+              throw new Error(`转录失败: ${file.name}`);
+            }
             console.log(`文件-${file.name}转录成功`, data, response);
             if (response.status === 499) {
               // 特定的响应码表达本条转录的结果为中断的情况,只更新当前文件的状态
@@ -965,9 +968,6 @@ const AIAndVideo = () => {
             }
             // 如果不ok
 
-            if (!response.ok) {
-              throw new Error(`转录失败: ${file.name}`);
-            }
             console.log("转录成功开始写入", data, abortTranscribing);
 
             // 确定转录完成
@@ -1014,6 +1014,76 @@ const AIAndVideo = () => {
         setIsTranscribing(false);
         setAbortTranscribing(false);
         message.destroy();
+      }
+    }
+  };
+
+  // 测试版本，并没有注重断开
+  const handleAliModelTranscript = async () => {
+    setIsTranscribing(true);
+    setTimeout(() => {
+      setIsTranscribing(false);
+    }, 500);
+    if (!currentFile) return;
+    if (isTranscribing) {
+      //需要断开请求
+      return;
+    } else {
+      // 非转录中触发这个函数，则发起转录请求
+      if (selectedFiles.length === 0) {
+        message.error("请选择要转录的文件");
+        return;
+      }
+      setIsTranscribing(true);
+      setAbortTranscribing(false);
+      message.loading("转录中...");
+      try {
+        for (const fileId of selectedFiles) {
+          // 检查是否已经请求终端
+          if (abortTranscribing) {
+            // 只将当前在转的文件状态改为终端
+            setUploadedFiles((prev) =>
+              prev.map((f) =>
+                f.status === "transcribing"
+                  ? { ...f, status: "interrupted" }
+                  : f
+              )
+            );
+            break;
+          }
+          const file = uploadedFiles.find((f) => f.id === fileId);
+          if (!file) continue; // 如果文件不存在，则跳过
+          if (file.status === "done") {
+            message.info(`文件-${file.name}已转录,跳过此文件`);
+            continue;
+          }
+          // 考虑是续传的状态怎么办
+
+          // 在文件源中更新文件状态
+          setUploadedFiles((prev) =>
+            prev.map((f) =>
+              f.id === fileId ? { ...f, status: "transcribing" } : f
+            )
+          );
+
+          try {
+            const formData = new FormData();
+            formData.append("file", file.file, file.name);
+            const response = await fetch(
+              "http://localhost:6688/api/transcribe_ali",
+              {
+                method: "POST",
+                body: formData,
+              }
+            );
+            const data = await response.json();
+            console.log(`文件-${file.name}转录成功`, data, response);
+          } catch (error) {
+            console.log("转录失败1", error);
+          }
+        }
+      } catch (error) {
+        console.log("转录失败", error);
       }
     }
   };
@@ -1169,6 +1239,16 @@ const AIAndVideo = () => {
                     loading={isTranscribingLoading}
                   >
                     {isTranscribing ? "停止转入" : "开始转录"}
+                  </Button>
+                  <Button
+                    className="transcriptBtn"
+                    style={{ width: 100 }}
+                    icon={<UploadOutlined />}
+                    onClick={handleAliModelTranscript}
+                    danger={isTranscribing}
+                    loading={isTranscribingLoading}
+                  >
+                    {isTranscribing ? "停止转入" : "使用阿里模型转录"}
                   </Button>
 
                   {/* <div className="upload-tips">支持多个视频和音频文件格式</div> */}
