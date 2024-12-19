@@ -38,6 +38,8 @@ const AIAndVideo = () => {
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
   const [isGenerating, setIsGenerating] = useState(false); // 模型是否正在生成的状态
   const messagesEndRef = useRef(null);
+  const [AliModelMessage, setAliModelMessage] = useState([]); // 阿里模型对话返回的信息
+  const [AliInputMessage, setAliInputMessage] = useState(""); // 阿里模型对话中用户输入的话
 
   // 获取上传视频中已经转录的个数
   const getSelectedTranscribedFilesCount = () => {
@@ -449,6 +451,159 @@ const AIAndVideo = () => {
     // 如果既不是加载中也没有内容，返回空容器
     return <div id={containerId} className="mindmap-container" />;
   };
+
+  // 测试版本，并没有注重断开
+  // 让阿里模型识别内容，并作为对话的上下文
+  const handleAliModelTranscript = async () => {
+    // 1. 上传文件
+    // 2. 使用指定模型
+    // 3. 传入问题，进行后续对答
+    setIsTranscribing(true);
+    setTimeout(() => {
+      setIsTranscribing(false);
+    }, 500);
+    if (!currentFile) return;
+    if (isTranscribing) {
+      //需要断开 阿里模型请求
+      return;
+    } else {
+      // 非转录中触发这个函数，则发起转录请求
+      if (selectedFiles.length === 0) {
+        message.error("请选择要转录的文件");
+        return;
+      }
+      // 其他模型的时候不允许多文件同时操作
+      if (selectedFiles.length > 1) {
+        message.error("只能同时对话一个文件");
+        return;
+      }
+      setIsTranscribing(true);
+      setAbortTranscribing(false);
+      message.loading("转录中...");
+      try {
+        for (const fileId of selectedFiles) {
+          // 检查是否已经请求终端
+          if (abortTranscribing) {
+            // 只将当前在转的文件状态改为终端
+            // setUploadedFiles((prev) =>
+            //   prev.map((f) =>
+            //     f.status === "transcribing"
+            //       ? { ...f, status: "interrupted" }
+            //       : f
+            //   )
+            // );
+            break;
+          }
+          const file = uploadedFiles.find((f) => f.id === fileId);
+          if (!file) continue; // 如果文件不存在，则跳过
+          if (file.status === "done") {
+            message.info(`文件-${file.name}已转录,跳过此文件`);
+            continue;
+          }
+          // 考虑是续传的状态怎么办
+
+          // 在文件源中更新文件状态
+          // setUploadedFiles((prev) =>
+          //   prev.map((f) =>
+          //     f.id === fileId ? { ...f, status: "transcribing" } : f
+          //   )
+          // );
+
+          const userMessage = {
+            role: "user",
+            content: "请简要描述这段对话的内容和情况。",
+          };
+          setAliModelMessage([...AliModelMessage, userMessage]);
+          try {
+            const formData = new FormData();
+            formData.append("file", file.file, file.name);
+            const response = await fetch(
+              "http://localhost:6688/api/transcribe_ali",
+              {
+                method: "POST",
+                body: formData,
+              }
+            );
+            // 检查响应是否有效
+            if (!response.ok) {
+              throw new Error(`请求失败，状态码：${response.status}`);
+            }
+            // 因为现在改造成流式传输，因此不能直接json化
+            // const data = await response.json();
+            const reader = response && response.body.getReader();
+            const decoder = new TextDecoder();
+            let done = false;
+            let chunk = "";
+            // 暂存流式数据
+            let transcriptionResult = "";
+            console.log("查看内容", response);
+
+            // 设置一个对话消息占位符，便于展示页面
+            setAliModelMessage([
+              ...AliModelMessage,
+              { role: "assistant", content: "" },
+            ]);
+
+            // 新增标志符，判断流式是否结束
+            while (!done) {
+              const { value, done: doneReading } = await reader.read();
+              console.log("doneReading", doneReading, value);
+
+              done = doneReading;
+              if (!doneReading) {
+                chunk = JSON.parse(decoder.decode(value, { stream: true }));
+                if (
+                  chunk?.output?.choices[0]?.message?.content[0]?.text !==
+                  undefined
+                ) {
+                  transcriptionResult +=
+                    chunk?.output?.choices[0]?.message?.content[0]?.text;
+                }
+
+                // 打印输出流的进度
+                console.log(
+                  "进度",
+                  chunk,
+                  chunk?.output?.choices[0]?.message?.content[0]?.text
+                );
+                setAliModelMessage([
+                  ...AliModelMessage,
+                  {
+                    role: "assistant",
+                    content: transcriptionResult,
+                  },
+                ]);
+              }
+            }
+            console.log(`文件-${file.name}转录成功`, response);
+            // setCurrentFile((prev) => ({
+            //   ...prev,
+            //   otherModelSummary: transcriptionResult,
+            // }));
+            setUploadedFiles((prev) => {
+              return prev.map((f) =>
+                f.id === fileId
+                  ? { ...f, status: "done", transcription: transcriptionResult }
+                  : f
+              );
+            });
+          } catch (error) {
+            console.log("转录失败1", error);
+            setUploadedFiles((prev) =>
+              prev.map((f) => (f.id === fileId ? { ...f, status: "error" } : f))
+            );
+          }
+        }
+      } catch (error) {
+        console.log("转录失败", error);
+      }
+    }
+  };
+
+  // 和阿里模型聊天
+  const handleAliModelChat = async () => {
+    console.log("和阿里模型聊天");
+  };
   // DOM
   const transcriptionColumns = [
     {
@@ -796,6 +951,104 @@ const AIAndVideo = () => {
         </div>
       ),
     },
+    {
+      key: "6",
+      label: "使用其他模型对话",
+      children: (
+        <div>
+          <Button
+            className="transcriptBtn"
+            style={{ width: 100 }}
+            icon={<UploadOutlined />}
+            onClick={handleAliModelTranscript}
+            danger={isTranscribing}
+            loading={isTranscribingLoading}
+          >
+            {isTranscribing ? "停止转录" : "启动阿里模型转录"}
+          </Button>
+          <div>
+            {!currentFile ? (
+              <div>请选择一个文件作为对话上下文</div>
+            ) : (
+              <div>
+                <div
+                  onClick={() => {
+                    console.log("message", AliModelMessage);
+                  }}
+                >
+                  当前文件：{currentFile.name}
+                </div>
+                <div>
+                  {/* 消息展示页面 */}
+                  {AliModelMessage.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`messageWrapper ${
+                        message.role === "user" ? "user" : "assistant"
+                      }`}
+                    >
+                      <div className="messageContent">
+                        <div className="messageMarkdown">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                        </div>
+                        <Button
+                          type="text"
+                          className="copyButton"
+                          icon={<CopyOutlined />}
+                          onClick={() => {
+                            handleCopyMessage(message.content);
+                          }}
+                        >
+                          复制
+                        </Button>
+                      </div>
+                      <div className="messageTime">
+                        {new Date().toLocaleTimeString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* 交互输入框和按钮 */}
+                <div className="inputContainer">
+                  <TextArea
+                    value={inputMessage}
+                    onChange={(e) => setAliInputMessage(e.target.value)}
+                    onCompositionStart={() => setIsComposing(true)}
+                    onCompositionEnd={() => setIsComposing(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        if (!isComposing) {
+                          e.preventDefault();
+                          handleAliModelChat();
+                        }
+                      }
+                    }}
+                    placeholder="输入消息按Enter发送，Shift+Enter换行"
+                    autoSize={{ minRows: 1, maxRows: 5 }}
+                    disabled={isGenerating}
+                  />
+                  <Button
+                    type="primary"
+                    icon={isGenerating ? <StopOutlined /> : <SendOutlined />}
+                    onClick={handleAliModelChat}
+                    danger={isGenerating}
+                  >
+                    {isGenerating ? "停止" : "发送"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {/* {currentFile && currentFile.otherModelSummary && (
+              <SummaryContent
+                fileId={currentFile.id}
+                content={currentFile.otherModelSummary}
+                isLoading={false}
+              />
+            )} */}
+          </div>
+        </div>
+      ),
+    },
   ];
 
   // Function===================================
@@ -829,6 +1082,7 @@ const AIAndVideo = () => {
       summary: "",
       detailedSummary: "",
       mindmapData: null,
+      otherModelSummary: "",
     };
     setUploadedFiles((prev) => [...prev, newFile]);
     // 如果是第一个文件，动设置为当前预览文件
@@ -1018,76 +1272,6 @@ const AIAndVideo = () => {
     }
   };
 
-  // 测试版本，并没有注重断开
-  const handleAliModelTranscript = async () => {
-    setIsTranscribing(true);
-    setTimeout(() => {
-      setIsTranscribing(false);
-    }, 500);
-    if (!currentFile) return;
-    if (isTranscribing) {
-      //需要断开请求
-      return;
-    } else {
-      // 非转录中触发这个函数，则发起转录请求
-      if (selectedFiles.length === 0) {
-        message.error("请选择要转录的文件");
-        return;
-      }
-      setIsTranscribing(true);
-      setAbortTranscribing(false);
-      message.loading("转录中...");
-      try {
-        for (const fileId of selectedFiles) {
-          // 检查是否已经请求终端
-          if (abortTranscribing) {
-            // 只将当前在转的文件状态改为终端
-            setUploadedFiles((prev) =>
-              prev.map((f) =>
-                f.status === "transcribing"
-                  ? { ...f, status: "interrupted" }
-                  : f
-              )
-            );
-            break;
-          }
-          const file = uploadedFiles.find((f) => f.id === fileId);
-          if (!file) continue; // 如果文件不存在，则跳过
-          if (file.status === "done") {
-            message.info(`文件-${file.name}已转录,跳过此文件`);
-            continue;
-          }
-          // 考虑是续传的状态怎么办
-
-          // 在文件源中更新文件状态
-          setUploadedFiles((prev) =>
-            prev.map((f) =>
-              f.id === fileId ? { ...f, status: "transcribing" } : f
-            )
-          );
-
-          try {
-            const formData = new FormData();
-            formData.append("file", file.file, file.name);
-            const response = await fetch(
-              "http://localhost:6688/api/transcribe_ali",
-              {
-                method: "POST",
-                body: formData,
-              }
-            );
-            const data = await response.json();
-            console.log(`文件-${file.name}转录成功`, data, response);
-          } catch (error) {
-            console.log("转录失败1", error);
-          }
-        }
-      } catch (error) {
-        console.log("转录失败", error);
-      }
-    }
-  };
-
   // 用来跳转对应的时间点
   const handleTimeClick = (record: any) => {
     console.log("打印时间点", record, mediaRef.current);
@@ -1239,16 +1423,6 @@ const AIAndVideo = () => {
                     loading={isTranscribingLoading}
                   >
                     {isTranscribing ? "停止转入" : "开始转录"}
-                  </Button>
-                  <Button
-                    className="transcriptBtn"
-                    style={{ width: 100 }}
-                    icon={<UploadOutlined />}
-                    onClick={handleAliModelTranscript}
-                    danger={isTranscribing}
-                    loading={isTranscribingLoading}
-                  >
-                    {isTranscribing ? "停止转入" : "使用阿里模型转录"}
                   </Button>
 
                   {/* <div className="upload-tips">支持多个视频和音频文件格式</div> */}
